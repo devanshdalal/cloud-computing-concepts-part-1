@@ -8,6 +8,10 @@
 #ifndef _MP1NODE_H_
 #define _MP1NODE_H_
 
+#include <ctime>
+#include <unordered_set>
+#include <unordered_map>
+#include <cstdlib>
 #include "stdincludes.h"
 #include "Log.h"
 #include "Params.h"
@@ -20,18 +24,43 @@
  */
 #define TREMOVE 20
 #define TFAIL 5
+#define SWIMK 3
+#define DETECTION_INTERVAL 1 // in sec
+#define WAITING_TIMEOUT 2	// in sec
 
 /*
  * Note: You can change/add any functions in MP1Node.{h,cpp}
  */
 
+// 1. node add, leave,
+// 2. SWIM failure detection
+// <PING> <addr>
+// <FAILED> <addr>
 /**
  * Message Types
  */
-enum MsgTypes{
-    JOINREQ,
-    JOINREP,
-    DUMMYLASTMSGTYPE
+enum MsgTypes
+{
+	JOINREQ,
+	JOINREP,
+	FAILED,
+	PING,
+	PONG,
+	DUMMYLASTMSGTYPE
+};
+
+enum NodeState
+{
+	TIMEOUTWAITING,
+	SWIMWAITING,
+	FINALWAITING,
+};
+
+struct NodeStatus
+{
+	enum NodeState state;
+	long timeout;
+	int node; // waiting node, -1 otherwise
 };
 
 /**
@@ -39,16 +68,18 @@ enum MsgTypes{
  *
  * DESCRIPTION: Header and content of a message
  */
-typedef struct MessageHdr {
+typedef struct MessageHdr
+{
 	enum MsgTypes msgType;
-}MessageHdr;
+} MessageHdr;
 
 /**
  * CLASS NAME: MP1Node
  *
  * DESCRIPTION: Class implementing Membership protocol functionalities for failure detection
  */
-class MP1Node {
+class MP1Node
+{
 private:
 	EmulNet *emulNet;
 	Log *log;
@@ -56,9 +87,20 @@ private:
 	Member *memberNode;
 	char NULLADDR[6];
 
+	// extra defined values
+	std::unordered_set<int> m_;
+	std::unordered_map<int, NodeStatus> local_state_; // waiting node to its status map
+	int last_detection_ = std::time(0);
+	int this_node_;
+
+	void PingK(int node_id);
+	void ModifyLocalState();
+	void PublishFailed(int node_id);
+
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
-	Member * getMemberNode() {
+	Member *getMemberNode()
+	{
 		return memberNode;
 	}
 	int recvLoop();
