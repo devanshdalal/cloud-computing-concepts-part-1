@@ -8,9 +8,9 @@
 #ifndef _MP1NODE_H_
 #define _MP1NODE_H_
 
-#include <ctime>
 #include <unordered_set>
 #include <unordered_map>
+#include <map>
 #include <cstdlib>
 #include "stdincludes.h"
 #include "Log.h"
@@ -24,9 +24,9 @@
  */
 #define TREMOVE 20
 #define TFAIL 5
-#define SWIMK 3
-#define DETECTION_INTERVAL 1 // in sec
-#define WAITING_TIMEOUT 2	// in sec
+#define SWIMK 2
+#define DETECTION_INTERVAL 50 // in globaltime units
+#define WAITING_TIMEOUT 10	// in globaltime units
 
 /*
  * Note: You can change/add any functions in MP1Node.{h,cpp}
@@ -90,12 +90,12 @@ private:
 	// extra defined values
 	std::unordered_set<int> m_;
 	std::unordered_map<int, NodeStatus> local_state_; // waiting node to its status map
-	int last_detection_ = std::time(0);
+	int last_detection_ = 0;
 	int this_node_;
 
 	void PingK(int node_id);
 	void ModifyLocalState();
-	void PublishFailed(int node_id);
+	void PublishToAll(MsgTypes type, int node_id);
 
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
