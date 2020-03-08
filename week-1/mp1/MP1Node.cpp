@@ -525,7 +525,7 @@ void MP1Node::PingK(int node_id)
         const int &new_id = e.getid();
         if (new_id == this_node_ || new_id == node_id)
         {
-            // --i;
+            --i;
             continue;
         }
         const int &port = e.getport();

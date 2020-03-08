@@ -24,9 +24,9 @@
  */
 #define TREMOVE 20
 #define TFAIL 5
-#define SWIMK 3
-#define DETECTION_INTERVAL 50 // in globaltime units
-#define WAITING_TIMEOUT 20	// in globaltime units
+#define SWIMK 2
+#define DETECTION_INTERVAL 30 // in globaltime units
+#define WAITING_TIMEOUT 10	// in globaltime units
 
 /*
  * Note: You can change/add any functions in MP1Node.{h,cpp}
