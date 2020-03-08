@@ -24,9 +24,9 @@
  */
 #define TREMOVE 20
 #define TFAIL 5
-#define SWIMK 2
+#define SWIMK 3
 #define DETECTION_INTERVAL 50 // in globaltime units
-#define WAITING_TIMEOUT 10	// in globaltime units
+#define WAITING_TIMEOUT 20	// in globaltime units
 
 /*
  * Note: You can change/add any functions in MP1Node.{h,cpp}
@@ -41,11 +41,11 @@
  */
 enum MsgTypes
 {
-	JOINREQ,
-	JOINREP,
-	FAILED,
-	PING,
-	PONG,
+	JOINREQ, // <node> <dest>
+	JOINREP, // <list of all nodes in the system>
+	FAILED,  // <failed node> <publisher>
+	PING,	// <src> <dest>
+	PONG,	// <src> <dest>
 	DUMMYLASTMSGTYPE
 };
 
@@ -95,7 +95,8 @@ private:
 
 	void PingK(int node_id);
 	void ModifyLocalState();
-	void PublishToAll(MsgTypes type, int node_id);
+	void PublishToAll(const MessageHdr &msg, size_t size);
+	void AddNode(int node);
 
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);

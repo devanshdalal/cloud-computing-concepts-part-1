@@ -156,6 +156,7 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr)
         log->LOG(&memberNode->addr, "Starting up group...");
 #endif
         memberNode->inGroup = true;
+        AddNode(this_node_);
     }
     else
     {
@@ -179,6 +180,22 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr)
     }
 
     return 1;
+}
+
+void MP1Node::AddNode(int node)
+{
+    if (m_.find(node) != m_.end())
+        return;
+    m_.insert(node);
+    memberNode->memberList.emplace_back(node, 0);
+    if (node == this_node_)
+    {
+        memberNode->inGroup = 1;
+    }
+    Address a(std::to_string(node) + ":0");
+#ifdef DEBUGLOG
+    log->logNodeAdd(&memberNode->addr, &a);
+#endif
 }
 
 /**
@@ -257,36 +274,38 @@ bool MP1Node::recvCallBack(void *env, char *data, int size)
 	 */
     MessageHdr *msg = (MessageHdr *)data;
     const auto current_time = par->getcurrtime();
+    // multicast the membership list.
+    vector<MemberListEntry> &memberList = memberNode->memberList;
     switch (msg->msgType)
     {
     case JOINREQ: // this is the introducer.
     {
-        Address a;
-        memcpy(&a.addr, (char *)(msg + 1), sizeof(a.addr));
-        // cout << "Node added " << msg->msgType << "-" << size << "="
-        //      << a.getAddress() << " on " << memberNode->addr.getAddress() << "\n";
-        MemberListEntry e;
-        memcpy(&e.id, &a.addr[0], sizeof(int));
-        memcpy(&e.port, &a.addr[4], sizeof(short));
-        memberNode->memberList.push_back(e);
+        AddNode(*(int *)(msg + 1));
+
+        size_t msgsize = sizeof(MessageHdr) + memberList.size() * sizeof(int);
+        // cout << "msgsize: " << sizeof(MessageHdr) << " " << sizeof(joinaddr->addr) << " " << sizeof(long) << " " << 1 << "\n";
+        MessageHdr *message = (MessageHdr *)malloc(msgsize * sizeof(char));
+        message->msgType = JOINREP;
+        int *fields = (int *)(message + 1);
+        for (int i = 0; i < memberList.size(); ++i)
+        {
+            fields[i] = memberList[i].getid();
+        }
         // multicast to the group.
-        PublishToAll(JOINREP, e.getid());
+        PublishToAll(*message, msgsize);
     }
     break;
 
     case JOINREP:
     {
-        // std::cout << "JOINREP\n";
-        int id;
-        memcpy(&id, (char *)(msg + 1), sizeof(int));
-        m_.insert(id);
-        Address a(std::to_string(id) + ":0");
-#ifdef DEBUGLOG
-        log->logNodeAdd(&memberNode->addr, &a);
-#endif
-        if (id == this_node_)
+        std::cout << "JOINREP " << this_node_ << "\n";
+        int nodes = (size - sizeof(MessageHdr)) / sizeof(int);
+        int *fields = (int *)(msg + 1);
+        for (int i = 0; i < nodes; ++i)
         {
-            memberNode->inGroup = 1;
+            if (m_.find(fields[i]) != m_.end())
+                continue;
+            AddNode(fields[i]);
         }
     }
     break;
@@ -351,15 +370,12 @@ bool MP1Node::recvCallBack(void *env, char *data, int size)
         local_state_.erase(src);
         for (auto jt = local_state_.begin(); jt != local_state_.end(); ++jt)
         {
-            std::cout << "local_state: " << jt->first << " " << jt->second.state << " " << jt->second.timeout << jt->second.node << "\n";
+            std::cout << "local_stateeee: " << jt->first << " " << jt->second.state << " " << jt->second.timeout << jt->second.node << "\n";
         }
         if (m_.find(src) == m_.end())
         {
-            m_.insert(src);
-#ifdef DEBUGLOG
-            Address a(std::to_string(src) + ":0");
-            log->logNodeAdd(&memberNode->addr, &a);
-#endif
+            std::cout << "Special case\n";
+            // AddNode(src);
         }
     }
     break;
@@ -367,21 +383,23 @@ bool MP1Node::recvCallBack(void *env, char *data, int size)
     case FAILED:
     {
         const int &failed = *(int *)(msg + 1);
-        std::cout << "FAILED " << failed << "\n";
-        m_.erase(failed);
-        vector<MemberListEntry> &memberList = memberNode->memberList;
-        for (int i = 0; i < memberList.size(); ++i)
+        std::cout << "FAILED " << failed << " " << this_node_ << " " << (m_.find(failed) != m_.end()) << " " << m_.size() << " " << memberList.size() << "\n";
+        if (m_.find(failed) != m_.end())
         {
-            if (memberList[i].getid() == failed)
+            m_.erase(failed);
+            for (int i = 0; i < memberList.size(); ++i)
             {
-                memberList.erase(memberList.begin() + i);
-                break;
+                if (memberList[i].getid() == failed)
+                {
+                    memberList.erase(memberList.begin() + i);
+                    break;
+                }
             }
-        }
-        Address a(std::to_string(failed) + ":0");
+            Address a(std::to_string(failed) + ":0");
 #ifdef DEBUGLOG
-        log->logNodeRemove(&memberNode->addr, &a);
+            log->logNodeRemove(&memberNode->addr, &a);
 #endif
+        }
     }
     break;
 
@@ -446,16 +464,25 @@ void MP1Node::ModifyLocalState()
             switch (node_status.state)
             {
             case FINALWAITING:
+            {
                 it = local_state_.erase(it);
-                break;
+            }
+            break;
             case SWIMWAITING:
+            {
                 // remove
-                PublishToAll(FAILED, it->first);
+                auto *message = CreateMessage(FAILED, it->first, this_node_);
+                PublishToAll(*message, MSGSIZE);
+                free(message);
                 it = local_state_.erase(it);
-                break;
+            }
+            break;
             case TIMEOUTWAITING:
+            {
                 PingK(it->first);
                 local_state_[it->first] = {SWIMWAITING, current_time + WAITING_TIMEOUT, -1};
+            }
+            break;
             default:
                 break;
             }
@@ -469,20 +496,20 @@ void MP1Node::ModifyLocalState()
     std::cout << "End ModifyLocalState\n";
 }
 
-void MP1Node::PublishToAll(MsgTypes type, int node_id)
+void MP1Node::PublishToAll(const MessageHdr &msg, size_t size)
 {
-    std::cout << "Start PublishToAll " << type << " " << this_node_ << "," << node_id << "\n";
+    std::cout << "Start PublishToAll "
+              << " " << this_node_ << "," << msg.msgType << "\n";
     for (int i = 0; i < memberNode->memberList.size(); ++i)
     {
         auto &e = memberNode->memberList[i];
-        // if (e.getid() == this_node_) continue;
+        if (e.getid() == this_node_)
+            continue;
         Address a(std::to_string(e.getid()) + ":" + std::to_string(e.getport()));
-        MessageHdr *msg = CreateMessage(type, node_id, e.getid() /* not used */);
-        if (!emulNet->ENsend(&memberNode->addr, &a, (char *)msg, MSGSIZE))
+        if (!emulNet->ENsend(&memberNode->addr, &a, (char *)&msg, size))
         {
             // failed to send to this node.
         }
-        free(msg);
     }
     std::cout << "End PublishToAll\n";
 }
