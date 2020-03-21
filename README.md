@@ -2,4 +2,4 @@
 Cloud Computing Concepts, Part 1
 
 
-[pdf](mp1_specifications.pdf)
+[problem statement](mp1_specifications.pdf)
